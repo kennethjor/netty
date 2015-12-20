@@ -29,8 +29,11 @@ import io.netty.channel.pool.FixedChannelPool.AcquireTimeoutAction;
 import io.netty.util.concurrent.Future;
 import org.junit.Test;
 
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.Set;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.*;
 
@@ -297,6 +300,80 @@ public class FixedChannelPoolTest {
         pool.release(channel).syncUninterruptibly();
         sc.close().syncUninterruptibly();
         channel.close().syncUninterruptibly();
+    }
+
+    @Test
+    public void testAcquireReleaseMany() throws Exception {
+        EventLoopGroup group = new LocalEventLoopGroup(8);
+        LocalAddress addr = new LocalAddress(LOCAL_ADDR_ID);
+        Bootstrap cb = new Bootstrap();
+        cb.remoteAddress(addr);
+        cb.group(group)
+            .channel(LocalChannel.class);
+
+        ServerBootstrap sb = new ServerBootstrap();
+        sb.group(group)
+            .channel(LocalServerChannel.class)
+            .childHandler(new ChannelInitializer<LocalChannel>() {
+                @Override
+                public void initChannel(LocalChannel ch) throws Exception {
+                    ch.pipeline().addLast(new ChannelInboundHandlerAdapter());
+                }
+            });
+
+        // Start server
+        Channel sc = sb.bind(addr).syncUninterruptibly().channel();
+        CountingChannelPoolHandler handler = new CountingChannelPoolHandler();
+
+        int maxChannels = 16;
+        final ChannelPool pool = new FixedChannelPool(cb, handler, maxChannels, Integer.MAX_VALUE);
+
+        ExecutorService executor = Executors.newCachedThreadPool();
+        final int n = 100;
+        final int m = 10000;
+        final CountDownLatch latch = new CountDownLatch(n);
+        final Set<Channel> channels = Collections.newSetFromMap(new ConcurrentHashMap<Channel, Boolean>());
+        final AtomicInteger rounds = new AtomicInteger();
+        for (int i=0 ; i<n ; i++) {
+            executor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        for (int i = 0; i < m; i++) {
+                            Future<Channel> future1 = pool.acquire().syncUninterruptibly();
+                            assertTrue(future1.isSuccess());
+                            Channel channel = future1.getNow();
+                            assertNotNull(channel);
+                            channels.add(channel);
+                            Future<Void> future2 = pool.release(channel).syncUninterruptibly();
+                            assertTrue(future2.isSuccess());
+                            rounds.incrementAndGet();
+                        }
+                        latch.countDown();
+                    }
+                    catch (Throwable e) {
+                        System.err.println(e.getMessage());
+                    }
+                }
+            });
+        }
+        latch.await(30, TimeUnit.SECONDS);
+        Thread.sleep(500);
+
+        assertEquals(Math.min(n, maxChannels), handler.channelCount());
+        assertEquals(rounds.get() - handler.channelCount(), handler.acquiredCount());
+        assertEquals(rounds.get(), handler.releasedCount());
+
+        sc.close().syncUninterruptibly();
+        for (Channel channel : channels) {
+            channel.close().syncUninterruptibly();
+        }
+        group.shutdownGracefully();
+
+        Field acquiredChannelCountField = FixedChannelPool.class.getDeclaredField("acquiredChannelCount");
+        acquiredChannelCountField.setAccessible(true);
+        int acquiredChannelCount = (Integer) acquiredChannelCountField.get(pool);
+        assertEquals(0, acquiredChannelCount);
     }
 
     private static final class TestChannelPoolHandler extends AbstractChannelPoolHandler {
