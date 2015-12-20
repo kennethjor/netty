@@ -30,6 +30,7 @@ import io.netty.util.concurrent.Future;
 import org.junit.Test;
 
 import java.lang.reflect.Field;
+import java.nio.channels.ClosedChannelException;
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.*;
@@ -361,13 +362,18 @@ public class FixedChannelPoolTest {
                                 }
                             }
                             catch (Throwable e) {
-                                System.out.println("Release error: " + e.getClass().getName() + ": " + e.getMessage());
+                                System.err.println("Release error: " + e.getClass().getName() + ": " + e.getMessage());
                             }
                         }
-                        latch.countDown();
                     }
                     catch (Throwable e) {
-                        System.out.println("Error: " + e.getClass().getName() + ": " + e.getMessage());
+                        System.err.println("Error: " + e.getClass().getName() + ": " + e.getMessage());
+                        if (e instanceof ClosedChannelException) {
+                            e.printStackTrace(System.err);
+                        }
+                    }
+                    finally {
+                        latch.countDown();
                     }
                 }
             });
