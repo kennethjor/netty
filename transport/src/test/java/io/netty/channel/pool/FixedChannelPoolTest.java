@@ -329,8 +329,8 @@ public class FixedChannelPoolTest {
         final ChannelPool pool = new FixedChannelPool(cb, handler, maxChannels, Integer.MAX_VALUE);
 
         ExecutorService executor = Executors.newCachedThreadPool();
-        final int n = 100;
-        final int m = 10000;
+        final int n = 50;
+        final int m = n * 1000;
         final CountDownLatch latch = new CountDownLatch(n);
         final Set<Channel> channels = Collections.newSetFromMap(new ConcurrentHashMap<Channel, Boolean>());
         final AtomicInteger rounds = new AtomicInteger();
@@ -346,7 +346,6 @@ public class FixedChannelPoolTest {
                             Channel channel = future1.getNow();
                             assertNotNull(channel);
                             channels.add(channel);
-                            double r = io.netty.util.internal.ThreadLocalRandom.current().nextDouble();
                             try {
                                 channel.close().syncUninterruptibly();
                             }
