@@ -340,13 +340,22 @@ public class FixedChannelPoolTest {
                 @Override
                 public void run() {
                     try {
+                        Channel channel;
                         for (int i = 0; i < m; i++) {
                             rounds.incrementAndGet();
-                            Future<Channel> future1 = pool.acquire().syncUninterruptibly();
-                            assertTrue(future1.isSuccess());
-                            Channel channel = future1.getNow();
-                            assertNotNull(channel);
-                            channels.add(channel);
+                            try {
+                                Future<Channel> future1 = pool.acquire().syncUninterruptibly();
+                                assertTrue(future1.isSuccess());
+                                channel = future1.getNow();
+                                assertNotNull(channel);
+                                assertTrue(channel.isActive());
+                                assertTrue(channel.isOpen());
+                                channels.add(channel);
+                            }
+                            catch (Throwable e) {
+                                System.out.println("Acquire error: " + e.getClass().getName() + ": " + e.getMessage());
+                                continue;
+                            }
                             try {
                                 channel.close().syncUninterruptibly();
                             }
