@@ -353,7 +353,9 @@ public class FixedChannelPoolTest {
                                 channels.add(channel);
                             }
                             catch (Throwable e) {
-                                System.out.println("Acquire error: " + e.getClass().getName() + ": " + e.getMessage());
+                                if (e.getMessage() == null || !e.getMessage().equals("connection refused")) {
+                                    System.out.println("Acquire error: " + e.getClass().getName() + ": " + e.getMessage());
+                                }
                                 continue;
                             }
                             try {
